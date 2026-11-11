@@ -34,7 +34,7 @@ Read `docs/architecture.md`, `docs/mcp.md`, and the relevant API or operations g
 - Target Python 3.12 and keep dependencies explicit in the requirements files.
 - Preserve CPU-only PyTorch installation in the Docker image unless GPU support is deliberately designed and documented.
 - Validate external input at API, MCP, and file-processing boundaries. Preserve database migrations, job recovery behavior, and existing API contracts unless the task calls for a change.
-- Keep documentation filenames, headings, descriptions, and user-facing repository text in English.
+- Use English for repository-facing names and text, including the repository name and description, documentation filenames and contents, branch names, and commit messages. Prefer lowercase kebab-case for new branch names and concise English commit subjects.
 - Update the relevant guides when changing API routes, MCP tools, environment variables, Compose services, storage, security boundaries, or operational procedures.
 - Prefer focused changes that follow existing module and test organization. Do not add generated artifacts or private machine-specific paths.
 

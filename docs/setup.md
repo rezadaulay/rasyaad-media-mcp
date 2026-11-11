@@ -5,6 +5,7 @@
 1. Use Docker Desktop with Linux containers. Confirm `docker compose ps` reports healthy dependencies after startup.
 2. Configure a local `.env`: set `APP_DATA_DIR` to a data drive, `LIBRARY_HOST_PATH` to the media library, and provide Qdrant credentials and the ingestion token. Do not commit `.env`.
 3. Place media to process in the library directory. The `/library` container mount is read-only.
+   Follow the [safe media copy SOP](media-ingestion-sop.md) to stage large files with a `.partial` name until the copy is complete.
 4. Validate and start the services:
 
    ```powershell

@@ -120,6 +120,8 @@ Dockerfile           Container image definition
 - [Setup and operations](docs/setup.md)
 - [API reference](docs/api.md)
 - [MCP integration](docs/mcp.md)
+- [MCP tools reference](docs/mcp-tools.md)
+- [Safe media copy SOP](docs/media-ingestion-sop.md)
 - [Architecture](docs/architecture.md)
 - [Testing and verification](docs/testing.md)
 - [Troubleshooting](docs/troubleshooting.md)

@@ -6,6 +6,8 @@ Read tools include `list_videos`, `get_video_metadata`, `get_transcript`, `searc
 
 The Claude Code skill is in `.claude/skills/dakwah-content-discovery/`. See the [Phase 3 usage guide](phase-3-usage.md). For single-video analysis, the agent must retrieve the full transcript with pagination and check total coverage; semantic search is not a substitute. Proposal history is available, but there is no record of which segments were actually used or published.
 
+See the [MCP tools reference](mcp-tools.md) for every available tool, its inputs, and workflow constraints. For instructions on copying media into the watched library without indexing an incomplete copy, follow the [safe media copy SOP](media-ingestion-sop.md).
+
 ## Private Tailscale setup
 
 1. Create a one-off, non-ephemeral Tailscale auth key for this container. If device approval is enabled for the tailnet, mark the key pre-approved. Set `TS_AUTHKEY` in the local `.env`. Never commit or share this key.
