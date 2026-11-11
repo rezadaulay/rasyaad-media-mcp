@@ -1,0 +1,9 @@
+fastapi==0.121.2
+uvicorn[standard]==0.38.0
+redis==7.0.1
+qdrant-client==1.16.0
+mcp==2.2.0
+faster-whisper==1.2.1
+av<19
+sentence-transformers==5.1.2
+pytest==8.4.2

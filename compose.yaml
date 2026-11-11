@@ -1,0 +1,180 @@
+name: dakwah-engine
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.15.3
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
+      QDRANT__STORAGE__SNAPSHOTS_PATH: /qdrant/snapshots
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - type: bind
+        source: ${APP_DATA_DIR:?Set APP_DATA_DIR in .env}/qdrant-snapshots
+        target: /qdrant/snapshots
+    networks: [internal]
+    mem_limit: 1536m
+    cpus: 1.5
+    healthcheck:
+      # The upstream image is intentionally minimal; verify its Qdrant executable.
+      # The startup period allows the service time to bind before dependents start.
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "384mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      APP_DATA_DIR: /data
+      LIBRARY_ROOT: /library
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
+      REDIS_URL: redis://redis:6379/0
+      INGESTION_API_TOKEN: ${INGESTION_API_TOKEN:?Set INGESTION_API_TOKEN in .env}
+      ASR_MODEL: ${ASR_MODEL:-large-v3}
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-id}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_THREADS: ${ASR_THREADS:-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      EMBEDDING_MODEL_IDLE_SECONDS: ${EMBEDDING_MODEL_IDLE_SECONDS:-600}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-2}
+      MODEL_CACHE_DIR: /data/models
+      HF_HUB_DISABLE_XET: "1"
+      SCAN_INTERVAL_SECONDS: ${SCAN_INTERVAL_SECONDS:-300}
+      STABLE_FILE_SECONDS: ${STABLE_FILE_SECONDS:-60}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - type: bind
+        source: ${LIBRARY_HOST_PATH:?Set LIBRARY_HOST_PATH in .env}
+        target: /library
+        read_only: true
+      - type: bind
+        source: ${APP_DATA_DIR:?Set APP_DATA_DIR in .env}
+        target: /data
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+    mem_limit: 3g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      APP_DATA_DIR: /data
+      LIBRARY_ROOT: /library
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
+      REDIS_URL: redis://redis:6379/0
+      INGESTION_API_TOKEN: ${INGESTION_API_TOKEN:?Set INGESTION_API_TOKEN in .env}
+      ASR_MODEL: ${ASR_MODEL:-large-v3}
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-id}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_THREADS: ${ASR_THREADS:-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      EMBEDDING_MODEL_IDLE_SECONDS: ${EMBEDDING_MODEL_IDLE_SECONDS:-600}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-2}
+      MODEL_CACHE_DIR: /data/models
+      HF_HUB_DISABLE_XET: "1"
+      WORKER_CONCURRENCY: "1"
+      SCAN_INTERVAL_SECONDS: ${SCAN_INTERVAL_SECONDS:-300}
+      STABLE_FILE_SECONDS: ${STABLE_FILE_SECONDS:-60}
+    volumes:
+      - type: bind
+        source: ${LIBRARY_HOST_PATH:?Set LIBRARY_HOST_PATH in .env}
+        target: /library
+        read_only: true
+      - type: bind
+        source: ${APP_DATA_DIR:?Set APP_DATA_DIR in .env}
+        target: /data
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+    mem_limit: 5g
+    cpus: 4.0
+
+  mcp:
+    build: .
+    profiles: [mcp, remote]
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_server"]
+    environment:
+      API_BASE_URL: http://api:8000
+      MCP_API_TOKEN: ${INGESTION_API_TOKEN:?Set INGESTION_API_TOKEN in .env}
+      MCP_API_TIMEOUT_SECONDS: ${MCP_API_TIMEOUT_SECONDS:-180}
+      MCP_PUBLIC_BASE_URL: ${MCP_PUBLIC_BASE_URL:-https://replace-with-your-tailnet-hostname.ts.net}
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8001}:8001"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [internal]
+    mem_limit: 512m
+    cpus: 0.5
+
+  tailscale:
+    image: tailscale/tailscale:stable
+    profiles: [remote]
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_AUTH_ONCE: "true"
+      TS_HOSTNAME: ${TS_HOSTNAME:-rasyaad-mcp}
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+    volumes:
+      - type: bind
+        source: ${APP_DATA_DIR:?Set APP_DATA_DIR in .env}/tailscale-state
+        target: /var/lib/tailscale
+      - type: bind
+        source: ./tailscale
+        target: /config
+        read_only: true
+    depends_on:
+      mcp:
+        condition: service_started
+    network_mode: service:mcp
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  redis_data:

@@ -1,0 +1,62 @@
+{
+  "dataset_type": "SIMULATED BEHAVIOR EVALUATION FIXTURE - NOT FROM THE SERMON LIBRARY",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "single_video_full_coverage",
+      "mode": "single_video",
+      "request": "Find up to five self-contained clips in this video.",
+      "fixture_transcript": {"total_segments": 7, "pages": [[0, 1, 2], [3, 4, 5], [6]]},
+      "expected_invariants": ["Read every page until count reaches total.", "Report complete coverage only after verifying order and timestamps.", "Do not replace coverage with top-k search hits."]
+    },
+    {
+      "id": "topic_expands_context",
+      "mode": "topic_based",
+      "request": "Find a clip about sincerity in worship.",
+      "fixture_transcript": {"lead_text": "A speaker discusses sincerity, then explains its limits in a neighboring passage."},
+      "expected_invariants": ["Search results are leads only.", "Read neighboring context before scoring.", "Preserve the stated qualification."]
+    },
+    {
+      "id": "library_unknown_use_history",
+      "mode": "autonomous_library",
+      "request": "Find an excellent segment that has never been used.",
+      "fixture_transcript": {"proposal_history_available": true, "published_use_history_available": false},
+      "expected_invariants": ["Check proposal history.", "Do not claim never used when publication history is absent.", "State the reuse limitation."]
+    },
+    {
+      "id": "preserve_negation",
+      "mode": "context_validation",
+      "request": "Select a short clip from this passage.",
+      "fixture_transcript": {"before": "Do not judge the whole matter from one action.", "candidate": "It is not proof that the person is insincere.", "after": "The speaker then gives a separate example."},
+      "expected_invariants": ["Keep the word 'not' in the excerpt.", "Do not turn the sentence into an affirmative claim.", "Avoid combining the separate example without editorial reason."]
+    },
+    {
+      "id": "quoted_hadith_attribution",
+      "mode": "context_validation",
+      "request": "Propose the strongest line as a hook.",
+      "fixture_transcript": {"before": "The speaker introduces a narration.", "candidate": "A simulated quoted narration.", "after": "The speaker attributes and explains the narration."},
+      "expected_invariants": ["Keep attribution clear.", "Do not present the quoted narration as the speaker's own words.", "Flag the religious reference for human verification."]
+    },
+    {
+      "id": "later_rebuttal_changes_meaning",
+      "mode": "quality_gate",
+      "request": "Use the opening sentence as a clip.",
+      "fixture_transcript": {"candidate": "A deliberately incomplete proposition.", "after": "The speaker immediately rejects the proposition."},
+      "expected_invariants": ["Reject a cut that makes the rejected proposition look endorsed.", "A high editorial score cannot bypass the context gate."]
+    },
+    {
+      "id": "no_relevant_material",
+      "mode": "topic_based",
+      "request": "Find a clip about a topic absent from the simulated source.",
+      "fixture_transcript": {"search_hits": []},
+      "expected_invariants": ["Return zero candidates.", "Do not invent content to meet the requested count."]
+    },
+    {
+      "id": "duplicate_spans",
+      "mode": "deduplication",
+      "request": "Return several ranked clips from this video.",
+      "fixture_transcript": {"candidate_a": [20, 55], "candidate_b": [22, 57], "candidate_c": [80, 112]},
+      "expected_invariants": ["Treat A and B as an overlapping duplicate unless a distinct message is evidenced.", "Keep C only after independent context validation."]
+    }
+  ]
+}

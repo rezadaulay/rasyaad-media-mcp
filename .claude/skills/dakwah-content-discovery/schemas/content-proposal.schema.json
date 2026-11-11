@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rasyaad.local/schemas/content-proposal.schema.json",
+  "title": "Dakwah Content Proposal",
+  "description": "Traceable editorial proposal for review; it does not represent a rendered or approved video.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposal_id", "video_id", "source_video", "transcript_version", "discovery_run_id", "start_time", "end_time", "duration", "source_chunk_ids", "transcript_excerpt", "proposed_title", "alternate_titles", "topic", "main_message", "target_audience", "suggested_hook", "content_summary", "selection_reason", "overall_score", "scoring_breakdown", "context_risk", "warnings", "evaluation_coverage", "evidence_references", "suggested_format", "editing_brief", "subtitle_emphasis", "visual_suggestions", "caption_draft", "status", "created_at", "reviewed_at", "review_notes", "review_decision"],
+  "properties": {
+    "proposal_id": {"type": "string", "minLength": 1},
+    "video_id": {"type": "string", "minLength": 1},
+    "source_video": {"type": "string", "minLength": 1},
+    "transcript_version": {"type": "string", "minLength": 1},
+    "discovery_run_id": {"type": "string", "minLength": 1},
+    "start_time": {"type": "number", "minimum": 0},
+    "end_time": {"type": "number", "exclusiveMinimum": 0},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "source_chunk_ids": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "transcript_excerpt": {"type": "string", "minLength": 1, "maxLength": 20000},
+    "proposed_title": {"type": "string", "minLength": 1},
+    "alternate_titles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "topic": {"type": "string", "minLength": 1},
+    "main_message": {"type": "string", "minLength": 1},
+    "target_audience": {"type": "string", "minLength": 1},
+    "suggested_hook": {"type": "string", "minLength": 1},
+    "content_summary": {"type": "string", "minLength": 1},
+    "selection_reason": {"type": "string", "minLength": 1},
+    "overall_score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "scoring_breakdown": {
+      "type": "object", "additionalProperties": false,
+      "required": ["message_benefit", "context_independence", "opening_hook", "clarity", "audience_relevance", "technical_quality", "explanation", "strengths", "weaknesses", "recommendation"],
+      "properties": {
+        "message_benefit": {"$ref": "#/$defs/dimension25"},
+        "context_independence": {"$ref": "#/$defs/dimension25"},
+        "opening_hook": {"$ref": "#/$defs/dimension20"},
+        "clarity": {"$ref": "#/$defs/dimension15"},
+        "audience_relevance": {"$ref": "#/$defs/dimension10"},
+        "technical_quality": {"$ref": "#/$defs/dimension5"},
+        "explanation": {"type": "string", "minLength": 1},
+        "strengths": {"type": "array", "items": {"type": "string"}},
+        "weaknesses": {"type": "array", "items": {"type": "string"}},
+        "recommendation": {"type": "string", "minLength": 1}
+      }
+    },
+    "context_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "evaluation_coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evaluated_weight", "evaluated_dimensions", "note"],
+      "properties": {
+        "evaluated_weight": {"type": "number", "minimum": 0, "maximum": 1},
+        "evaluated_dimensions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["message_benefit", "context_independence", "opening_hook", "clarity", "audience_relevance", "technical_quality"]}},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence_references": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "suggested_format": {"type": "string", "minLength": 1},
+    "editing_brief": {"type": "string", "minLength": 1},
+    "subtitle_emphasis": {"type": "array", "items": {"type": "string"}},
+    "visual_suggestions": {"type": "array", "items": {"type": "string"}},
+    "caption_draft": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "enum": ["draft", "proposed", "approved", "rejected", "needs_revision"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "reviewed_at": {"type": ["string", "null"], "format": "date-time"},
+    "review_notes": {"type": ["string", "null"]},
+    "review_decision": {"type": ["string", "null"], "enum": ["approved", "rejected", "needs_revision", null]}
+  },
+  "$defs": {
+    "dimensionBase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["weight", "score", "status", "evidence"],
+      "properties": {
+        "weight": {"type": "number", "minimum": 0, "maximum": 100},
+        "score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "status": {"type": "string", "enum": ["evaluated", "not_evaluated"]},
+        "evidence": {"type": "string", "minLength": 1}
+      }
+    },
+    "dimension25": {"allOf": [{"$ref": "#/$defs/dimensionBase"}], "properties": {"weight": {"const": 25}}},
+    "dimension20": {"allOf": [{"$ref": "#/$defs/dimensionBase"}], "properties": {"weight": {"const": 20}}},
+    "dimension15": {"allOf": [{"$ref": "#/$defs/dimensionBase"}], "properties": {"weight": {"const": 15}}},
+    "dimension10": {"allOf": [{"$ref": "#/$defs/dimensionBase"}], "properties": {"weight": {"const": 10}}},
+    "dimension5": {"allOf": [{"$ref": "#/$defs/dimensionBase"}], "properties": {"weight": {"const": 5}}}
+  }
+}
