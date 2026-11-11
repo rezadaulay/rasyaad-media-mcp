@@ -22,7 +22,7 @@ The indexed corpus and quality checks are still limited. One available video has
 - Structured content proposals with source-reference validation and human review decisions.
 - MP4 clip rendering for approved proposals, including a centered 1080 × 1920 vertical preset.
 - A Claude Code skill for source-grounded clip discovery and editorial review.
-- Optional private remote access through Tailscale Serve.
+- Optional public remote access through Tailscale Funnel.
 
 ## Design principles
 
@@ -134,8 +134,8 @@ Dockerfile           Container image definition
 ## Security and content review
 
 - Do not commit `.env`, authentication keys, API tokens, Tailscale state, source media, local databases, model caches, or generated exports.
-- Source media is mounted read-only. Keep the API, MCP, Qdrant, and Redis endpoints on trusted networks.
-- The optional Tailscale setup provides private tailnet access. MCP uses a shared internal token and does not identify each remote user individually; restrict tailnet ACLs to trusted operators. Do not expose the service to the public internet.
+- Source media is mounted read-only. Keep the API, Qdrant, and Redis endpoints on trusted networks; only MCP is exposed publicly through the explicitly configured Funnel.
+- The optional Tailscale Funnel setup provides public HTTPS access. MCP does not authenticate inbound callers individually; anyone who knows the URL can invoke available tools. Enable this access only when public access is intended.
 - Automated transcripts may contain recognition errors and are not verified religious quotations. Retrieval scores rank results; they are not confidence or truth scores. Review the original source, wording, timestamps, and religious context before publication.
 
 ## License

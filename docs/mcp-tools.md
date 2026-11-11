@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Rasyaad Media MCP exposes tools over Streamable HTTP at `/mcp`. Connect an MCP-compatible client to the local endpoint or the private Tailscale URL described in [MCP integration](mcp.md). The server delegates operations to the configured API and uses a shared ingestion token; remote clients do not have individual identities or reviewer accounts.
+Rasyaad Media MCP exposes tools over Streamable HTTP at `/mcp`. Connect an MCP-compatible client to the local endpoint or the public Tailscale Funnel URL described in [MCP integration](mcp.md). The server delegates operations to the configured API and uses a shared ingestion token; remote clients do not have individual identities or reviewer accounts.
 
 ## Available tools
 

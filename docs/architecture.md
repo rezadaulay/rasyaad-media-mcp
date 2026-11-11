@@ -36,9 +36,9 @@ Deterministic chunking groups timestamped segments at sentence boundaries and ta
 
 ## Remote access and migration
 
-The library is read-only and allowlisted through a single `/library` mount; the API does not accept arbitrary paths. Qdrant and Redis are available only on the Compose network. The API and local MCP are bound to host loopback. The Compose `remote` profile adds a Tailscale container sharing the MCP network namespace. Tailscale Serve forwards private HTTPS to `127.0.0.1:8001`. Serve configuration is in `tailscale/serve.json`; node identity persists under `${APP_DATA_DIR}/tailscale-state`, separately from the image. Do not enable Funnel or router port forwarding for this private setup.
+The library is read-only and allowlisted through a single `/library` mount; the API does not accept arbitrary paths. Qdrant and Redis are available only on the Compose network. The API and local MCP are bound to host loopback. The Compose `remote` profile adds a Tailscale container sharing the MCP network namespace. Tailscale Funnel forwards public HTTPS to `127.0.0.1:8001`; configuration persists in `tailscale/serve.json`, and node identity persists under `${APP_DATA_DIR}/tailscale-state`, separately from the image. The public MCP endpoint does not authenticate individual callers, so anyone who knows the URL can invoke available MCP tools. Do not configure router port forwarding.
 
-`POST /library/scan` requires `INGESTION_API_TOKEN`; the MCP adapter uses the same token to call the API. Since MCP does not verify an individual user identity per request, restrict tailnet ACLs to trusted operators. For a Linux server, securely transfer Compose files, `.env`, and Tailscale state, or register a new tailnet node. Do not run two nodes using the same state. Perform an application backup/restore drill before cutover.
+`POST /library/scan` requires `INGESTION_API_TOKEN`; the MCP adapter uses the same token to call the API. MCP does not verify an individual caller identity, and the explicitly configured public Funnel allows anyone who knows its URL to invoke MCP tools. For a Linux server, securely transfer Compose files, `.env`, and Tailscale state, or register a new tailnet node. Do not run two nodes using the same state. Perform an application backup/restore drill before cutover.
 
 ## Phase 3 proposal flow
 

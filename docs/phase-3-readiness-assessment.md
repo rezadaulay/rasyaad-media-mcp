@@ -22,7 +22,7 @@ The existing MCP code exposes seven Phase 2 tools: six read tools and `trigger_l
 - No `list_used_segments` capability exists. Proposal history can be checked, but actual rendered/published use is not tracked, so “unused content” cannot be guaranteed.
 - No visual/audio inspection tool is exposed by MCP. Technical quality must remain `not_evaluated`; timestamp boundaries are ASR segment-level and must be checked in Phase 4 rendering.
 - Live retrieval found two completed videos. Full transcript coverage and one real transcript-derived proposal were checked for `a sample video`; the proposal was schema-validated and persisted. This is not the required three-video human editorial evaluation. Existing Phase 2 documentation still leaves transcript accuracy and retrieval relevance QA open.
-- No user identity or per-user authorization exists on the MCP transport. New write operations inherit the existing shared ingestion-token trust boundary. Restrict remote access to trusted tailnet operators.
+- No user identity or per-user authorization exists on the MCP transport. New write operations inherit the existing shared ingestion-token trust boundary. The explicitly configured public Funnel allows anyone who knows the URL to invoke MCP tools.
 - Transcript metadata has ASR model and creation metadata but no immutable transcript revision ID. Proposals retain a caller-provided `transcript_version`; production orchestration should standardize it from transcript metadata.
 
 ## MCP compatibility and security

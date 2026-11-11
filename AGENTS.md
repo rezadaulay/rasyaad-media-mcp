@@ -19,8 +19,8 @@ Read `docs/architecture.md`, `docs/mcp.md`, and the relevant API or operations g
 
 - Treat the source media library as read-only. Keep derived data, model caches, databases, and rendered clips in the configured application data directory.
 - Never add `.env`, credentials, SSH keys, Tailscale state, source media, private library samples, local databases, model caches, or generated exports to version control.
-- Preserve path allowlisting and token checks. Do not introduce arbitrary host-path access or expose internal services publicly.
-- Remote MCP access is intended for trusted tailnet users. Do not enable Tailscale Funnel or router port forwarding as part of routine changes.
+- Preserve path allowlisting and token checks. Do not introduce arbitrary host-path access or expose internal services publicly. The MCP Funnel exception is explicitly authorized and documented below.
+- Public MCP access through Tailscale Funnel is enabled by explicit operator request and persisted in `tailscale/serve.json`. Preserve this setting unless the operator explicitly asks to change it. Do not enable router port forwarding. The public MCP endpoint does not authenticate inbound callers individually; anyone who knows the URL can invoke available MCP tools.
 - Avoid destructive data or volume cleanup unless the task explicitly requires it and the affected data is identified.
 
 ## Content Integrity

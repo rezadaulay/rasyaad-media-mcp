@@ -28,13 +28,13 @@ Every Compose service uses `restart: unless-stopped`, including the API, worker,
 # Local MCP endpoint only
 docker compose --profile mcp up -d --build
 
-# Private remote MCP endpoint through Tailscale Serve
+# Public remote MCP endpoint through Tailscale Funnel
 docker compose --profile remote up -d --build
 ```
 
-The `remote` profile includes the MCP service and Tailscale. Configure `TS_AUTHKEY` and persistent `APP_DATA_DIR` before starting it. To intentionally keep the stack stopped, run `docker compose --profile remote stop` (or use the profile you started); a manual stop is respected by `unless-stopped` until a later explicit `up`.
+The `remote` profile includes the MCP service and Tailscale Funnel. Configure `TS_AUTHKEY` and persistent `APP_DATA_DIR` before starting it. Funnel is publicly accessible and persists through `tailscale/serve.json`. To intentionally keep the stack stopped, run `docker compose --profile remote stop` (or use the profile you started); a manual stop is respected by `unless-stopped` until a later explicit `up`.
 
-After signing in or rebooting, check `docker compose ps` and the endpoint at `http://127.0.0.1:8000/health/ready`. Remote MCP availability also depends on Tailscale reconnecting to the tailnet. Windows sleep, network availability, and the host remaining powered on determine whether remote access is reachable.
+After signing in or rebooting, check `docker compose ps` and the endpoint at `http://127.0.0.1:8000/health/ready`. Public MCP availability also depends on Tailscale reconnecting to the tailnet and Funnel being allowed by tailnet policy. Windows sleep, network availability, and the host remaining powered on determine whether remote access is reachable. The public endpoint has no per-client authentication; anyone who knows its URL can invoke MCP tools.
 
 ## Scanning and job status
 
@@ -50,7 +50,7 @@ Local operators can also run `docker compose exec worker python -m app scan`. Jo
 
 ## API and MCP
 
-FastAPI documentation is available at `http://127.0.0.1:8000/docs`. The local MCP Streamable HTTP endpoint is `http://127.0.0.1:8001/mcp`. For private remote access, configure `TS_AUTHKEY` in `.env`, then run `docker compose --profile remote up -d --build`. This profile starts MCP and Tailscale Serve; MCP is forwarded over HTTPS within the tailnet without opening a router port. Client devices must join the tailnet and be permitted by its ACL. See the [MCP guide](mcp.md) for URLs, state migration, and access limits.
+FastAPI documentation is available at `http://127.0.0.1:8000/docs`. The local MCP Streamable HTTP endpoint is `http://127.0.0.1:8001/mcp`. For public remote access, configure `TS_AUTHKEY` in `.env`, then run `docker compose --profile remote up -d --build`. This profile starts MCP and Tailscale Funnel; MCP is forwarded over HTTPS publicly without opening a router port. See the [MCP guide](mcp.md) for URLs, state migration, and access limits.
 
 ## Cleanup and retention
 
