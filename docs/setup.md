@@ -11,12 +11,30 @@
    ```powershell
    docker compose config --quiet
    docker compose build
-   docker compose up -d --build
+   docker compose --profile mcp up -d --build
    ```
 
 5. Check `http://127.0.0.1:8000/health/ready` and inspect worker logs with `docker compose logs -f worker`.
 
 ASR and embedding models are downloaded to `/data/models` when first needed. Reserve several gigabytes of free space on the data drive. These are local open-weight model downloads, not cloud inference. Avoid running multiple ingestion jobs at once.
+
+## Automatic startup on Windows
+
+Docker Desktop must start before its containers can start. In Docker Desktop, enable **Settings → General → Start Docker Desktop when you sign in to your computer**. On this PC, Docker Desktop is registered in the current Windows user's Startup registry entry and its `AutoStart` preference is enabled. This starts Docker Desktop after that user signs in; it does not start Docker services before Windows sign-in.
+
+Every Compose service uses `restart: unless-stopped`, including the API, worker, MCP server, Qdrant, Redis, and Tailscale. Once a profile has been brought up successfully, Docker restarts its containers when the engine starts. Use the same profile when initially creating the stack:
+
+```powershell
+# Local MCP endpoint only
+docker compose --profile mcp up -d --build
+
+# Private remote MCP endpoint through Tailscale Serve
+docker compose --profile remote up -d --build
+```
+
+The `remote` profile includes the MCP service and Tailscale. Configure `TS_AUTHKEY` and persistent `APP_DATA_DIR` before starting it. To intentionally keep the stack stopped, run `docker compose --profile remote stop` (or use the profile you started); a manual stop is respected by `unless-stopped` until a later explicit `up`.
+
+After signing in or rebooting, check `docker compose ps` and the endpoint at `http://127.0.0.1:8000/health/ready`. Remote MCP availability also depends on Tailscale reconnecting to the tailnet. Windows sleep, network availability, and the host remaining powered on determine whether remote access is reachable.
 
 ## Scanning and job status
 
