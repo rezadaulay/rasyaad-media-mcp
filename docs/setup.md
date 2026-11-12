@@ -32,7 +32,7 @@ docker compose --profile mcp up -d --build
 docker compose --profile remote up -d --build
 ```
 
-The `remote` profile includes the MCP service and Tailscale Funnel. Configure `TS_AUTHKEY` and persistent `APP_DATA_DIR` before starting it. Funnel is publicly accessible and persists through `tailscale/serve.json`. To intentionally keep the stack stopped, run `docker compose --profile remote stop` (or use the profile you started); a manual stop is respected by `unless-stopped` until a later explicit `up`.
+The `remote` profile includes the MCP service and Tailscale Funnel. Configure `TS_AUTHKEY` and persistent `APP_DATA_DIR` before starting it. For signed clip download links, set `MCP_PUBLIC_BASE_URL` to the HTTPS origin reported by `tailscale funnel status` (omit `/mcp`); leave it empty for local-only MCP so it will not create public links. Funnel is publicly accessible and persists through `tailscale/serve.json`. To intentionally keep the stack stopped, run `docker compose --profile remote stop` (or use the profile you started); a manual stop is respected by `unless-stopped` until a later explicit `up`.
 
 After signing in or rebooting, check `docker compose ps` and the endpoint at `http://127.0.0.1:8000/health/ready`. Public MCP availability also depends on Tailscale reconnecting to the tailnet and Funnel being allowed by tailnet policy. Windows sleep, network availability, and the host remaining powered on determine whether remote access is reachable. The public endpoint has no per-client authentication; anyone who knows its URL can invoke MCP tools.
 

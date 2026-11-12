@@ -18,6 +18,6 @@ See the [MCP tools reference](mcp-tools.md) for every available tool, its inputs
    docker compose --profile remote up -d --build
    ```
 
-4. After Tailscale connects and Funnel is allowed by tailnet policy, use the URL shown by `tailscale funnel status` with the `/mcp` suffix, for example `https://rasyaad-mcp.<tailnet-name>.ts.net/mcp`. Public clients do not need to join the tailnet.
+4. After Tailscale connects and Funnel is allowed by tailnet policy, copy its HTTPS origin from `tailscale funnel status` into `.env` as `MCP_PUBLIC_BASE_URL=https://rasyaad-mcp.<tailnet-name>.ts.net` (omit `/mcp` and any trailing slash). Restart MCP after setting it. Connect clients to that origin with `/mcp`. If `MCP_PUBLIC_BASE_URL` is unset, MCP omits public clip download URLs instead of returning a placeholder. Public clients do not need to join the tailnet.
 
 The MCP adapter currently uses a shared ingestion token for its calls to the API; it does not authenticate inbound MCP clients individually. Anyone who knows the public Funnel URL can invoke the exposed MCP tools. For migration, preserve Tailscale state securely or register a new node, then verify Funnel status and MCP access.

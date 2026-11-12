@@ -146,7 +146,7 @@ services:
       API_BASE_URL: http://api:8000
       MCP_API_TOKEN: ${INGESTION_API_TOKEN:?Set INGESTION_API_TOKEN in .env}
       MCP_API_TIMEOUT_SECONDS: ${MCP_API_TIMEOUT_SECONDS:-180}
-      MCP_PUBLIC_BASE_URL: ${MCP_PUBLIC_BASE_URL:-https://replace-with-your-tailnet-hostname.ts.net}
+      MCP_PUBLIC_BASE_URL: ${MCP_PUBLIC_BASE_URL:-}
     ports:
       - "127.0.0.1:${MCP_PORT:-8001}:8001"
     depends_on:
