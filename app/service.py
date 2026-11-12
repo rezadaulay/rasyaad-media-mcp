@@ -121,10 +121,20 @@ def get_clip_job(job_id: str) -> dict[str, Any] | None:
     result = dict(row)
     checkpoint = json.loads(result.pop("checkpoint"))
     result["render_preset"] = checkpoint.get("render_preset", "original")
+    result["outputs_expired"] = bool(checkpoint.get("outputs_expired", False))
+    if checkpoint.get("arabic_detection"):
+        result["arabic_detection"] = checkpoint["arabic_detection"]
     result["output_path"] = checkpoint.get("output_path") if row["status"] == "completed" else None
     if row["status"] == "completed":
         result["output_width"] = checkpoint.get("output_width")
         result["output_height"] = checkpoint.get("output_height")
+        if checkpoint.get("subtitle_path"):
+            result["subtitle_path"] = checkpoint["subtitle_path"]
+            result["subtitle_cue_count"] = int(checkpoint.get("subtitle_cue_count", 0))
+        if checkpoint.get("subtitle_ar_path"):
+            result["subtitle_ar_path"] = checkpoint["subtitle_ar_path"]
+            result["subtitle_ar_cue_count"] = int(checkpoint.get("subtitle_ar_cue_count", 0))
+            result["arabic_corrections"] = checkpoint.get("arabic_corrections", [])
     return result
 
 

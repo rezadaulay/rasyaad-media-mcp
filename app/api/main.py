@@ -130,9 +130,7 @@ def clip_job(job_id: str):
     return result
 
 
-@app.get("/clip-download/{job_id}")
-@app.get("/job/{job_id}")
-def download_clip(job_id: str, expires: int, signature: str):
+def _get_download_checkpoint(job_id: str, expires: int, signature: str) -> dict[str, Any]:
     if not settings.api_token or expires < int(time.time()) or expires > int(time.time()) + 3600:
         raise HTTPException(403, "Download link expired or invalid")
     message = f"clip-job:{job_id}:{expires}".encode("utf-8")
@@ -145,7 +143,13 @@ def download_clip(job_id: str, expires: int, signature: str):
         raise HTTPException(404, "Clip job not found")
     if row["status"] != "completed":
         raise HTTPException(409, "Clip render is not complete")
-    checkpoint = json.loads(row["checkpoint"])
+    return json.loads(row["checkpoint"])
+
+
+@app.get("/clip-download/{job_id}")
+@app.get("/job/{job_id}")
+def download_clip(job_id: str, expires: int, signature: str):
+    checkpoint = _get_download_checkpoint(job_id, expires, signature)
     expected_path = (settings.data_dir / "clips" / f"{job_id}.mp4").resolve()
     try:
         output_path = Path(checkpoint["output_path"]).resolve()
@@ -155,6 +159,40 @@ def download_clip(job_id: str, expires: int, signature: str):
     if output_path != expected_path or not output_path.is_file():
         raise HTTPException(404, "Clip output is unavailable")
     return FileResponse(output_path, media_type="video/mp4", filename=f"{job_id}.mp4")
+
+
+@app.get("/clip-download/{job_id}/subtitle")
+@app.get("/job/{job_id}/subtitle")
+def download_clip_subtitle(job_id: str, expires: int, signature: str):
+    checkpoint = _get_download_checkpoint(job_id, expires, signature)
+    expected_path = (settings.data_dir / "clips" / f"{job_id}.srt").resolve()
+    try:
+        subtitle_path = Path(checkpoint["subtitle_path"]).resolve()
+        subtitle_path.relative_to((settings.data_dir / "clips").resolve())
+    except (KeyError, ValueError, OSError) as exc:
+        raise HTTPException(404, "Clip subtitles are unavailable") from exc
+    if subtitle_path != expected_path or not subtitle_path.is_file():
+        raise HTTPException(404, "Clip subtitles are unavailable")
+    return FileResponse(subtitle_path, media_type="application/x-subrip", filename=f"{job_id}.srt")
+
+
+@app.get("/clip-download/{job_id}/subtitle/ar")
+@app.get("/job/{job_id}/subtitle/ar")
+def download_clip_arabic_subtitle(job_id: str, expires: int, signature: str):
+    checkpoint = _get_download_checkpoint(job_id, expires, signature)
+    clips_dir = (settings.data_dir / "clips").resolve()
+    expected_paths = {
+        clips_dir / f"{job_id}.ar.srt",  # Keep previously rendered jobs downloadable.
+        clips_dir / f"{job_id}.arabic.srt",
+    }
+    try:
+        subtitle_path = Path(checkpoint["subtitle_ar_path"]).resolve()
+        subtitle_path.relative_to((settings.data_dir / "clips").resolve())
+    except (KeyError, ValueError, OSError) as exc:
+        raise HTTPException(404, "Arabic clip subtitles are unavailable") from exc
+    if subtitle_path not in expected_paths or not subtitle_path.is_file():
+        raise HTTPException(404, "Arabic clip subtitles are unavailable")
+    return FileResponse(subtitle_path, media_type="application/x-subrip", filename=subtitle_path.name)
 
 
 @app.post("/library/scan")

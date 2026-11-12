@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import connect, initialize, claim_clip_job, claim_job, event, beat_worker
 from app.discovery import scan_library
 from app.worker.pipeline import process_job, render_clip_job
+from app.worker.retention import cleanup_expired_clip_artifacts
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger=logging.getLogger("dakwah.worker")
@@ -61,9 +62,19 @@ def main():
     initialize(); recover_interrupted_jobs(); recover_interrupted_clip_jobs()
     threading.Thread(target=heartbeat_loop,name="worker-heartbeat",daemon=True).start()
     next_scan=0.0
+    next_clip_cleanup=0.0
     prefer_clip=True
-    logger.info("Worker started concurrency=1 scan_interval_seconds=%s",settings.scan_interval_seconds)
+    logger.info(
+        "Worker started concurrency=1 scan_interval_seconds=%s clip_retention_hours=%s clip_cleanup_interval_seconds=%s",
+        settings.scan_interval_seconds, settings.clip_retention_hours, settings.clip_cleanup_interval_seconds,
+    )
     while not stopping:
+        if time.monotonic() >= next_clip_cleanup:
+            try:
+                cleanup_expired_clip_artifacts()
+            except Exception:
+                logger.exception("Expired clip artifact cleanup failed")
+            next_clip_cleanup = time.monotonic() + settings.clip_cleanup_interval_seconds
         if time.monotonic() >= next_scan:
             try:
                 logger.info("Library scan: %s",scan_library())

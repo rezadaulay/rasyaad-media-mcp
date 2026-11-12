@@ -11,7 +11,8 @@ Let an operator render a copy of a human-approved sermon proposal through MCP, w
 3. Persist a separate SQLite clip job and return its `job_id`. A duplicate active render for the same proposal and render preset returns the existing job.
 4. The single worker renders the clip with FFmpeg to a temporary file under `/data/clips`, validates the output, and atomically publishes `<job_id>.mp4`. It rechecks the source fingerprint before and after rendering and never writes to the library.
 5. Vertical output is center-cropped to 9:16 and encoded as 1080×1920 H.264/AAC MP4. This static crop does not track a speaker who moves away from center.
-6. MCP exposes request and status tools. The status includes the render preset, export path, dimensions, duration, clear errors, and a short-lived HTTPS download URL for completed clips.
+6. After saving the MP4, the worker generates an Indonesian SRT from stored transcript segments and performs coarse-to-fine Arabic speech detection in the rendered clip. It re-transcribes candidate windows with the local Whisper model forced to Arabic and writes an Arabic-script SRT. This is transcription, not translation. Detection progress is persisted in the clip job so the status does not remain at a static percentage.
+7. MCP exposes request and status tools. The status includes the render preset, export paths, dimensions, duration, Indonesian and Arabic cue counts, clear errors, and short-lived HTTPS download URLs for completed MP4 and both SRT files.
 
 ## Acceptance criteria
 
@@ -22,6 +23,9 @@ Let an operator render a copy of a human-approved sermon proposal through MCP, w
 - A render is durably queued, survives worker restart, and reaches completed or failed status with a useful error.
 - Successful output is a decodable MP4 with the requested duration within codec tolerance, and exists only in the export directory.
 - Vertical render output is exactly 1080×1920, centered, and 9:16; original render output behavior remains unchanged.
+- Both original and vertical renders produce Indonesian and Arabic SRT sidecars with clip-relative timestamps. The Arabic file contains native-script transcription for detected Arabic speech and is empty when no Arabic speech is detected.
+- The HTTPS subtitle URLs serve only the corresponding job SRT files and use the same expiring HMAC signature validation as the MP4 URL.
+- Arabic detection scans configurable coarse windows before refining only candidate ranges; the clip job exposes phase progress during detection and Arabic transcription.
 - Source file bytes and metadata remain unchanged.
 - MCP request and job-status tools work through the shared API. API, MCP, and worker docs describe the flow and limits.
 - The completed job URL serves only that MP4 over HTTPS, requires a time-limited HMAC signature, and rejects expired or altered links.

@@ -101,13 +101,21 @@ def request_vertical_clip_render(proposal_id: str) -> dict:
 def get_clip_job(job_id: str) -> dict:
     """Get render progress, errors, and the completed export path for a clip job."""
     result=call(f"/clip-jobs/{quote(job_id, safe='')}")
-    if result.get("status") == "completed" and PUBLIC_BASE_URL and TOKEN:
+    if result.get("status") == "completed" and result.get("output_path") and PUBLIC_BASE_URL and TOKEN:
         expires=int(time.time())+900
         message=f"clip-job:{job_id}:{expires}".encode("utf-8")
         signature=hmac.new(TOKEN.encode("utf-8"),message,hashlib.sha256).hexdigest()
         query=urlencode({"expires":expires,"signature":signature})
         # Tailscale Serve strips the matched /clip-download/ prefix before proxying.
         result["download_url"]=f"{PUBLIC_BASE_URL}/clip-download/job/{quote(job_id,safe='')}?{query}"
+        if result.get("subtitle_path"):
+            result["subtitle_url"]=(
+                f"{PUBLIC_BASE_URL}/clip-download/job/{quote(job_id,safe='')}/subtitle?{query}"
+            )
+        if result.get("subtitle_ar_path"):
+            result["subtitle_ar_url"]=(
+                f"{PUBLIC_BASE_URL}/clip-download/job/{quote(job_id,safe='')}/subtitle/ar?{query}"
+            )
         result["download_url_expires_at"]=expires
     return result
 

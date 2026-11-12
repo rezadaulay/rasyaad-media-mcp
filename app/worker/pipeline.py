@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import time
+import unicodedata
 from pathlib import Path
 
 from app.config import settings
@@ -21,6 +23,232 @@ def atomic_json(path: Path, value: dict) -> None:
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(temp, path)
+
+
+def _srt_timestamp(seconds: float) -> str:
+    milliseconds = max(0, round(seconds * 1000))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, milliseconds = divmod(remainder, 1000)
+    return f"{hours:02}:{minutes:02}:{whole_seconds:02},{milliseconds:03}"
+
+
+def _clip_srt_text(video_id: str, start_time: float, end_time: float) -> tuple[str, int]:
+    """Build sidecar subtitles from saved transcript cues, rebased to clip time zero."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT start_time,end_time,text FROM transcript_segments "
+            "WHERE video_id=? AND end_time>? AND start_time<? ORDER BY start_time,sequence_number",
+            (video_id, start_time, end_time),
+        ).fetchall()
+
+    cues = []
+    for row in rows:
+        text = " ".join(str(row["text"]).split())
+        cue_start = max(float(row["start_time"]), start_time) - start_time
+        cue_end = min(float(row["end_time"]), end_time) - start_time
+        if not text or cue_end <= cue_start:
+            continue
+        cues.append((cue_start, cue_end, text))
+
+    blocks = [
+        f"{index}\n{_srt_timestamp(cue_start)} --> {_srt_timestamp(cue_end)}\n{text}"
+        for index, (cue_start, cue_end, text) in enumerate(cues, start=1)
+    ]
+    return ("\n\n".join(blocks) + ("\n" if blocks else ""), len(cues))
+
+
+def _has_arabic_script(text: str) -> bool:
+    return any(
+        "\u0600" <= char <= "\u06ff"
+        or "\ufb50" <= char <= "\ufdff"
+        or "\ufe70" <= char <= "\ufeff"
+        for char in text
+    )
+
+
+_ARABIC_WORDS = re.compile(
+    r"[\u0621-\u064a\u064b-\u065f\u066e-\u06ed\u06fa-\u06fc\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]+"
+)
+
+
+def _normalize_arabic_word(word: str) -> str:
+    decomposed = unicodedata.normalize("NFD", word)
+    return "".join(
+        char for char in decomposed
+        if unicodedata.category(char) != "Mn" and char != "ـ"
+    )
+
+
+def _correct_arabic_spelling(text: str) -> tuple[str, list[dict[str, str]]]:
+    """Apply only a validated, context-specific Arabic ASR spelling correction."""
+    tokens = [
+        (match.start(), match.end(), _normalize_arabic_word(match.group()))
+        for match in _ARABIC_WORDS.finditer(text)
+    ]
+    expected_context = ["لا", "ينقس", "من", "اجر", "الصايم"]
+    for index in range(len(tokens) - len(expected_context) + 1):
+        window = tokens[index:index + len(expected_context)]
+        if [token[2] for token in window] != expected_context:
+            continue
+
+        word_start, word_end, _ = window[1]
+        original_word = text[word_start:word_end]
+        if "س" not in original_word:
+            continue
+        corrected_word = original_word.replace("س", "ص", 1)
+        corrected_text = text[:word_start] + corrected_word + text[word_end:]
+        correction = {
+            "rule": "la-yanqusu-min-ajr-as-saim-v1",
+            "original": original_word,
+            "corrected": corrected_word,
+            "context": "لا ينقس من أجر الصائم",
+        }
+        return corrected_text, [correction]
+    return text, []
+
+
+def _merge_time_ranges(ranges: list[list[float]], max_gap: float = 0.1) -> list[list[float]]:
+    merged: list[list[float]] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1] + max_gap:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def _arabic_srt_text(model, audio, sample_rate: int = 16000, progress_callback=None) -> tuple[str, int, list[dict[str, str]]]:
+    """Coarse-to-fine Arabic detection followed by native-script Arabic transcription."""
+    import math
+
+    total_samples = len(audio)
+    duration = total_samples / sample_rate
+    coarse_window = max(4.0, settings.arabic_coarse_window_seconds)
+    coarse_stride = max(1.0, min(coarse_window, settings.arabic_coarse_stride_seconds))
+    fine_window = max(2.0, settings.arabic_fine_window_seconds)
+    fine_stride = max(0.5, min(fine_window, settings.arabic_fine_stride_seconds))
+    coarse_threshold = min(1.0, max(0.0, settings.arabic_coarse_threshold))
+    fine_threshold = min(1.0, max(0.0, settings.arabic_fine_threshold))
+    transcription_context = min(30.0, max(0.0, settings.arabic_transcription_context_seconds))
+
+    def windows(start_time: float, end_time: float, window_seconds: float, stride_seconds: float):
+        start_sample = max(0, int(start_time * sample_rate))
+        end_limit = min(total_samples, int(end_time * sample_rate))
+        window_samples = max(sample_rate, int(window_seconds * sample_rate))
+        stride_samples = max(1, int(stride_seconds * sample_rate))
+        available_samples = end_limit - start_sample
+        if available_samples < sample_rate:
+            return []
+        if available_samples <= window_samples:
+            return [(start_sample, end_limit)]
+
+        last_start = end_limit - window_samples
+        offsets = list(range(start_sample, last_start + 1, stride_samples))
+        # Shift the final window to the end so every sample is covered without
+        # adding a short, nearly duplicate tail window.
+        if offsets[-1] < last_start:
+            offsets.append(last_start)
+        return [(offset, offset + window_samples) for offset in offsets]
+
+    def arabic_probability(detection) -> float:
+        language, probability, all_probabilities = detection
+        for candidate, candidate_probability in all_probabilities:
+            if candidate == "ar":
+                return float(candidate_probability)
+        return float(probability) if language == "ar" else 0.0
+
+    coarse_windows = windows(0.0, duration, coarse_window, coarse_stride)
+    coarse_ranges = []
+    for index, (start_sample, end_sample) in enumerate(coarse_windows, start=1):
+        detection = model.detect_language(
+            audio=audio[start_sample:end_sample], language_detection_threshold=0.5,
+        )
+        if arabic_probability(detection) >= coarse_threshold:
+            coarse_ranges.append((start_sample / sample_rate, end_sample / sample_rate))
+        if progress_callback:
+            progress_callback("coarse_detection", index, len(coarse_windows))
+
+    coarse_ranges = _merge_time_ranges([list(item) for item in coarse_ranges], max_gap=coarse_stride)
+    fine_windows = []
+    for range_start, range_end in coarse_ranges:
+        expanded_start = max(0.0, range_start - fine_stride)
+        expanded_end = min(duration, range_end + fine_stride)
+        # Anchor refinement windows to clip time zero. Starting the grid at each
+        # candidate boundary can miss short speech that falls between windows.
+        aligned_start = math.floor(expanded_start / fine_stride) * fine_stride
+        fine_windows.extend(windows(aligned_start, expanded_end, fine_window, fine_stride))
+    # Coarse ranges can overlap around adjacent candidates; do not repeat model inference.
+    fine_windows = sorted(set(fine_windows))
+
+    arabic_ranges = []
+    for index, (start_sample, end_sample) in enumerate(fine_windows, start=1):
+        detection = model.detect_language(
+            audio=audio[start_sample:end_sample], language_detection_threshold=0.5,
+        )
+        if arabic_probability(detection) >= fine_threshold:
+            arabic_ranges.append((start_sample / sample_rate, end_sample / sample_rate))
+        if progress_callback:
+            progress_callback("fine_detection", index, len(fine_windows))
+    arabic_ranges = _merge_time_ranges([list(item) for item in arabic_ranges], max_gap=fine_stride)
+
+    cues: list[tuple[float, float, str]] = []
+    corrections: list[dict[str, str]] = []
+    for index, (range_start, range_end) in enumerate(arabic_ranges, start=1):
+        padded_start = max(0.0, range_start - transcription_context)
+        padded_end = min(duration, range_end + transcription_context)
+        audio_start = int(padded_start * sample_rate)
+        audio_end = min(total_samples, math.ceil(padded_end * sample_rate))
+        segments, _ = model.transcribe(
+            audio[audio_start:audio_end], language="ar", task="transcribe", beam_size=5,
+            vad_filter=False, condition_on_previous_text=False, word_timestamps=False,
+        )
+        for segment in segments:
+            text = " ".join(str(segment.text).split())
+            if (not text or not _has_arabic_script(text)
+                    or float(getattr(segment, "no_speech_prob", 0.0)) > 0.6
+                    or float(getattr(segment, "avg_logprob", 0.0)) < -1.5):
+                continue
+            cue_start = max(0.0, min(duration, padded_start + float(segment.start)))
+            cue_end = max(0.0, min(duration, padded_start + float(segment.end)))
+            if cue_end > cue_start:
+                text, segment_corrections = _correct_arabic_spelling(text)
+                for correction in segment_corrections:
+                    corrections.append({
+                        **correction,
+                        "cue_start": _srt_timestamp(cue_start),
+                        "cue_end": _srt_timestamp(cue_end),
+                    })
+                cues.append((cue_start, cue_end, text))
+        if progress_callback:
+            progress_callback("arabic_transcription", index, len(arabic_ranges))
+
+    blocks = [
+        f"{index}\n{_srt_timestamp(start)} --> {_srt_timestamp(end)}\n{text}"
+        for index, (start, end, text) in enumerate(cues, start=1)
+    ]
+    return ("\n\n".join(blocks) + ("\n" if blocks else ""), len(cues), corrections)
+
+
+def _generate_arabic_srt(audio_path: Path, output_path: Path, progress_callback=None) -> tuple[int, list[dict[str, str]]]:
+    """Run the local multilingual ASR on a rendered clip and write Arabic-only cues."""
+    from faster_whisper import WhisperModel
+    from faster_whisper.audio import decode_audio
+
+    audio = decode_audio(str(audio_path), sampling_rate=16000)
+    model = WhisperModel(
+        settings.asr_model, device="cpu", compute_type=settings.asr_compute_type,
+        cpu_threads=settings.asr_threads, num_workers=1,
+        download_root=str(settings.model_cache_dir),
+    )
+    try:
+        subtitle_text, cue_count, corrections = _arabic_srt_text(
+            model, audio, progress_callback=progress_callback,
+        )
+        output_path.write_text(subtitle_text, encoding="utf-8", newline="\n")
+        return cue_count, corrections
+    finally:
+        del model
 
 
 def render_clip_job(job) -> None:
@@ -46,6 +274,11 @@ def render_clip_job(job) -> None:
         return
     output_path = output_dir / f"{job['job_id']}.mp4"
     temp_path = output_dir / f"{job['job_id']}.rendering.mp4"
+    subtitle_path = output_dir / f"{job['job_id']}.srt"
+    subtitle_temp_path = output_dir / f"{job['job_id']}.rendering.srt"
+    arabic_subtitle_path = output_dir / f"{job['job_id']}.arabic.srt"
+    arabic_subtitle_temp_path = output_dir / f"{job['job_id']}.rendering.arabic.srt"
+    audio_temp_path = settings.data_dir / "temporary" / f"{job['job_id']}.arabic.wav"
     try:
         if (fingerprint(source) != checkpoint["source_fingerprint"] or
                 content_fingerprint(source) != checkpoint["source_content_fingerprint"]):
@@ -72,6 +305,7 @@ def render_clip_job(job) -> None:
         video_stream = next((stream for stream in media.get("streams", []) if stream.get("codec_type") == "video"), None)
         if video_stream is None:
             raise RuntimeError("FFmpeg output does not contain a video stream")
+        has_audio = any(stream.get("codec_type") == "audio" for stream in media.get("streams", []))
         output_width = int(video_stream.get("width") or 0)
         output_height = int(video_stream.get("height") or 0)
         if render_preset == "vertical_9_16" and (output_width, output_height) != (1080, 1920):
@@ -83,21 +317,70 @@ def render_clip_job(job) -> None:
                 content_fingerprint(source) != checkpoint["source_content_fingerprint"]):
             raise RuntimeError("Source video changed during rendering")
         os.replace(temp_path, output_path)
+        set_stage(job["job_id"], "indonesian_subtitles", 0.82)
+        subtitle_text, subtitle_cue_count = _clip_srt_text(job["video_id"], start_time, start_time + duration)
+        subtitle_temp_path.write_text(subtitle_text, encoding="utf-8", newline="\n")
+
+        set_stage(job["job_id"], "arabic_subtitles", 0.85)
+        audio_temp_path.parent.mkdir(parents=True, exist_ok=True)
+        if has_audio:
+            subprocess.run([
+                "ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(output_path),
+                "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                str(audio_temp_path),
+            ], check=True, timeout=max(120, int(duration * 4)))
+
+            def report_arabic_progress(phase: str, completed: int, total: int) -> None:
+                if phase == "coarse_detection":
+                    stage_progress = 0.85 + 0.05 * completed / max(1, total)
+                elif phase == "fine_detection":
+                    stage_progress = 0.90 + 0.05 * completed / max(1, total)
+                else:
+                    stage_progress = 0.95 + 0.03 * completed / max(1, total)
+                set_stage(job["job_id"], "arabic_subtitles", stage_progress, {
+                    "arabic_detection": {"phase": phase, "completed": completed, "total": total},
+                })
+                if completed == 1 or completed == total or completed % 5 == 0:
+                    log.info("Arabic subtitle progress job_id=%s phase=%s progress=%d/%d",
+                             job["job_id"], phase, completed, total)
+
+            arabic_subtitle_cue_count, arabic_corrections = _generate_arabic_srt(
+                audio_temp_path, arabic_subtitle_temp_path, progress_callback=report_arabic_progress,
+            )
+        else:
+            arabic_subtitle_cue_count = 0
+            arabic_corrections = []
+            arabic_subtitle_temp_path.write_text("", encoding="utf-8")
+
+        os.replace(subtitle_temp_path, subtitle_path)
+        os.replace(arabic_subtitle_temp_path, arabic_subtitle_path)
         set_stage(job["job_id"], "completed", 1, {
             "output_path": str(output_path), "duration": rendered_duration,
             "output_width": output_width, "output_height": output_height,
+            "subtitle_path": str(subtitle_path), "subtitle_cue_count": subtitle_cue_count,
+            "subtitle_ar_path": str(arabic_subtitle_path),
+            "subtitle_ar_cue_count": arabic_subtitle_cue_count,
+            "arabic_corrections": arabic_corrections,
         })
         finish_clip_job(job["job_id"], "completed")
         event("Approved clip rendered", video_id=job["video_id"], job_id=job["job_id"], stage="completed",
               details={"proposal_id": job["proposal_id"], "duration": rendered_duration,
-                       "render_preset": render_preset, "width": output_width, "height": output_height})
+                       "render_preset": render_preset, "width": output_width, "height": output_height,
+                       "subtitle_cue_count": subtitle_cue_count,
+                       "subtitle_ar_cue_count": arabic_subtitle_cue_count,
+                       "arabic_correction_count": len(arabic_corrections)})
     except Exception as exc:
         if temp_path:
             temp_path.unlink(missing_ok=True)
+        subtitle_temp_path.unlink(missing_ok=True)
+        arabic_subtitle_temp_path.unlink(missing_ok=True)
+        audio_temp_path.unlink(missing_ok=True)
         log.exception("Clip render failed job_id=%s", job["job_id"])
         finish_clip_job(job["job_id"], "failed", exc)
         event("Clip render failed", video_id=job["video_id"], job_id=job["job_id"], stage="failed",
               level="ERROR", details={"type": type(exc).__name__, "message": str(exc)[:1000]})
+    finally:
+        audio_temp_path.unlink(missing_ok=True)
 
 
 def transcribe(job, video) -> dict:

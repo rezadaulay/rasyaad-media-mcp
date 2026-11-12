@@ -40,9 +40,9 @@ Proposals must refer to a completed, registered source and retain verifiable chu
 | --- | --- | --- |
 | `request_clip_render` | Queue an MP4 render from an approved proposal. | `proposal_id`. |
 | `request_vertical_clip_render` | Queue a centered 9:16, 1080 × 1920 MP4 render from an approved proposal. | `proposal_id`. |
-| `get_clip_job` | Read render progress, errors, and export information. | `job_id`. |
+| `get_clip_job` | Read render progress, errors, export information, and signed MP4/SRT download links when complete. | `job_id`. |
 
-Rendering requires a human-approved proposal and an unchanged, completed source. Rendered outputs are derived files; the source library remains read-only. When configured, a completed job can return a signed download URL that expires after 15 minutes.
+Rendering requires a human-approved proposal and an unchanged, completed source. Each render saves an MP4, an Indonesian `<job_id>.srt`, and an Arabic `<job_id>.arabic.srt`. The Indonesian SRT uses saved transcript segments; the Arabic SRT uses coarse-to-fine detection in the rendered clip, followed by transcription of candidate windows with the local Whisper model forced to `ar`/`transcribe`. The job status reports Arabic detection phase and progress while this work runs. The Arabic SRT contains detected Arabic speech in Arabic script; it is not an Arabic translation of the Indonesian speech. A narrow context-validated spelling correction fixes `ينقس` to `ينقص` only in the phrase `لا ينقص من أجر الصائم`; the original and corrected token are included in `arabic_corrections` in the completed job response for review. This does not validate other words or replace human review. Subtitle timestamps start at zero for the clip. If no Arabic speech is detected, the Arabic SRT is empty and its cue count is zero. A missing Indonesian transcript likewise yields an empty Indonesian SRT. Rendered outputs are derived files; the source library remains read-only. Signed MP4 and SRT links expire after 15 minutes, and the worker automatically removes clip files 48 hours after completion by default. Job history remains available with `outputs_expired: true` after cleanup.
 
 ## Suggested workflow
 
